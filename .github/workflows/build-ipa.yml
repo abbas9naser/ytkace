@@ -22,7 +22,7 @@ jobs:
     uses: ./.github/workflows/build-deb.yml
 
   plan:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     outputs:
       targets: ${{ steps.targets.outputs.targets }}
     steps:
