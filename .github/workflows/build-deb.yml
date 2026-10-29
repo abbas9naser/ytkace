@@ -43,7 +43,12 @@ jobs:
 
       - name: Setup
         if: steps.cache-theos.outputs.cache-hit != 'true'
-        run: bash -c "$(curl -fsSL https://raw.githubusercontent.com/roothide/theos/master/bin/install-theos)"
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/roothide/theos/master/bin/install-theos -o "$RUNNER_TEMP/install-theos"
+          # Ubuntu 26.04 renamed the libxml2 package to libxml2-16, so the installer's
+          # apt line fails there. Nothing in Theos or its toolchain uses it, so drop it.
+          sed -i '/apt install -y build-essential/s/ libxml2 / /' "$RUNNER_TEMP/install-theos"
+          bash "$RUNNER_TEMP/install-theos"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
