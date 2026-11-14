@@ -37,6 +37,10 @@ static BOOL YTKACEHidesPostShorts(void) {
     return YTKACEFeatureEnabled(@"YTKACE.Preference.Shorts.PostsHidden");
 }
 
+static BOOL YTKACEFiltersAnything(void) {
+    return YTKACEHidesLiveShorts() || YTKACEHidesPostShorts();
+}
+
 static BOOL YTKACEFiltersVideoType(NSInteger videoType) {
     if (videoType == YTKACEReelVideoTypeLive ||
         videoType == YTKACEReelVideoTypeLivePreview) {
@@ -46,21 +50,34 @@ static BOOL YTKACEFiltersVideoType(NSInteger videoType) {
     return NO;
 }
 
+static id YTKACESafeObject(id object, NSString *name) {
+    SEL selector = NSSelectorFromString(name);
+    if (![object respondsToSelector:selector]) return nil;
+    return ((id (*)(id, SEL))objc_msgSend)(object, selector);
+}
+
+static NSInteger YTKACEVideoTypeOf(id object) {
+    SEL selector = NSSelectorFromString(@"videoType");
+    if (![object respondsToSelector:selector]) return 0;
+    return ((NSInteger (*)(id, SEL))objc_msgSend)(object, selector);
+}
+
 static BOOL YTKACEFiltersModel(id model) {
+    if (!YTKACEFiltersAnything()) return NO;
     if (![model isKindOfClass:YTKACEReelModelClass()]) return NO;
-    NSInteger videoType = ((NSInteger (*)(id, SEL))objc_msgSend)(
-        model, NSSelectorFromString(@"videoType"));
-    return YTKACEFiltersVideoType(videoType);
+    return YTKACEFiltersVideoType(YTKACEVideoTypeOf(model));
+}
+
+static BOOL YTKACEFiltersEndpoint(id endpoint) {
+    if (!YTKACEFiltersAnything()) return NO;
+    id reelEndpoint = [endpoint respondsToSelector:NSSelectorFromString(@"videoType")]
+        ? endpoint : YTKACESafeObject(endpoint, @"reelWatchEndpoint");
+    return YTKACEFiltersVideoType(YTKACEVideoTypeOf(reelEndpoint));
 }
 
 static BOOL YTKACEFiltersEntry(id entry) {
-    id command = ((id (*)(id, SEL))objc_msgSend)(
-        entry, NSSelectorFromString(@"command"));
-    id endpoint = ((id (*)(id, SEL))objc_msgSend)(
-        command, NSSelectorFromString(@"reelWatchEndpoint"));
-    NSInteger videoType = ((NSInteger (*)(id, SEL))objc_msgSend)(
-        endpoint, NSSelectorFromString(@"videoType"));
-    return YTKACEFiltersVideoType(videoType);
+    if (!YTKACEFiltersAnything()) return NO;
+    return YTKACEFiltersEndpoint(YTKACESafeObject(entry, @"command"));
 }
 
 static id YTKACEMakeContentModelForEntry(id receiver, SEL selector, id entry) {
@@ -75,6 +92,10 @@ static BOOL YTKACEShouldDisplay(id receiver, SEL selector) {
 }
 
 static void YTKACESetReels(id receiver, SEL selector, NSOrderedSet *reels) {
+    if (!YTKACEFiltersAnything()) {
+        ((void (*)(id, SEL, id))OriginalSetReels)(receiver, selector, reels);
+        return;
+    }
     NSMutableOrderedSet *filtered =
         [NSMutableOrderedSet orderedSetWithCapacity:reels.count];
     for (id reel in reels) {
@@ -96,9 +117,7 @@ static BOOL YTKACEInsertEndpoint(id receiver,
                                  SEL selector,
                                  id endpoint,
                                  NSUInteger index) {
-    NSInteger videoType = ((NSInteger (*)(id, SEL))objc_msgSend)(
-        endpoint, NSSelectorFromString(@"videoType"));
-    if (YTKACEFiltersVideoType(videoType)) return NO;
+    if (YTKACEFiltersEndpoint(endpoint)) return NO;
     return ((BOOL (*)(id, SEL, id, NSUInteger))OriginalInsertEndpoint)(
         receiver, selector, endpoint, index);
 }
